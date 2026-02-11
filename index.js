@@ -1,16 +1,20 @@
+require('dotenv').config();
 const express = require('express');
-const app = express();
-const PORT = 9000;
+const connectDB = require('./config/db');
 
-// Middleware
+// 1. Initialize Express
+const app = express();
+
+// 2. Connect to Database
+connectDB();
+
+// 3. Middleware
 app.use(express.json());
 
-// Routes
-app.get('/', (req, res) => {
-  res.send('Hello World!');
+// 4. Test Route
+app.get('/health', (req, res) => {
+  res.send('API is running and DB is connected...');
 });
 
-// Start server
-app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
-});
+const PORT = process.env.PORT;
+app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));

@@ -6,13 +6,14 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node index.js",
     "dev": "nodemon index.js"
-
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "description": "",
   "dependencies": {
-    "express": "^5.2.1"
+    "dotenv": "^17.2.4",
+    "express": "^5.2.1",
+    "mongoose": "^8.23.0"
   }
 }
