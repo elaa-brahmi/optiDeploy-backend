@@ -15,13 +15,44 @@ async function getOctokit() {
   }
   return OctokitCached;
 }
+async function listAvailableModels() {
+    try {
+      const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+      // Note: The ListModels method is usually on the root genAI object or via the v1 endpoint
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1/models?key=${process.env.GEMINI_API_KEY}`
+      );
+      const data = await response.json();
+      
+      console.log("--- AVAILABLE MODELS ---");
+      data.models.forEach((model) => {
+        console.log(`- Model: ${model.name}`);
+        console.log(`  Methods: ${model.supportedGenerationMethods.join(", ")}`);
+      });
+      console.log("-------------------------");
+      return data.models;
+    } catch (error) {
+      console.error("Error listing models:", error);
+    }
+  }
+  
+  // You can call this once when the server starts
 router.post('/analyze/:repoId', async (req, res) => {
     const { repoId } = req.params;
   
     try {
       // 1. Fetch Project & User details
       const project = await Project.findOne({ repoId });
+      
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+      
       const user = await User.findOne({ githubId: project.userId });
+      
+      if (!user || !user.accessToken) {
+        return res.status(404).json({ error: "User not found or missing access token" });
+      }
       
       const Octokit = await getOctokit();
       const octokit = new Octokit({ auth: user.accessToken });
@@ -44,9 +75,13 @@ router.post('/analyze/:repoId', async (req, res) => {
         });
         gitignoreContent = Buffer.from(gi.content, 'base64').toString();
       }
+  listAvailableModels();
+
   
       // 3. Prepare AI Prompt
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      const model = genAI.getGenerativeModel({ 
+        model: "gemini-2.5-flash",
+      }, { apiVersion: 'v1' });
       const prompt = `
         You are a Senior DevOps Engineer. Analyze this repository structure:
         Repository Name: ${project.name}
