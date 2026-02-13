@@ -1,20 +1,24 @@
 require('dotenv').config();
 const express = require('express');
 const connectDB = require('./config/db');
-
-// 1. Initialize Express
+const authRouter = require('./routers/authRouter');
+const repoRouter = require('./routers/repoRouter');
 const app = express();
+const cors = require('cors');
 
-// 2. Connect to Database
+app.use(cors({
+  origin: process.env.FRONTEND_URL, 
+  credentials: true
+}));
 connectDB();
 
-// 3. Middleware
 app.use(express.json());
 
-// 4. Test Route
 app.get('/health', (req, res) => {
   res.send('API is running and DB is connected...');
 });
 
+app.use('/api/auth', authRouter);
+app.use('/api/repos', repoRouter);
 const PORT = process.env.PORT;
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));

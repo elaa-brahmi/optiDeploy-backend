@@ -8,4 +8,4 @@ const UserSchema = new mongoose.Schema({
   lastLogin: { type: Date, default: Date.now }
 });
 
-module.exports = mongoose.model('User', UserSchema);
+module.exports = mongoose.model('users', UserSchema);

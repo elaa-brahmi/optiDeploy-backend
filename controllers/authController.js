@@ -1,16 +1,15 @@
 const User = require('../models/user');
 
 exports.syncUser = async (req, res) => {
-  const { githubId, email, name, accessToken } = req.body;
-
   try {
-    const user = await User.findOneAndUpdate(
+    const { githubId, email, name, accessToken } = req.body;
+    await User.findOneAndUpdate(
       { githubId },
-      { email, name, accessToken, lastLogin: Date.now() },
-      { upsert: true, new: true }
+      { email, name, accessToken, lastLogin: new Date() },
+      { upsert: true }
     );
-    res.status(200).json({ success: true, user });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+    return res.status(200).send("Synced"); // Ensure a response is sent!
+  } catch (err) {
+    return res.status(500).send(err.message);
   }
 };
