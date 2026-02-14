@@ -36,12 +36,11 @@ async function listAvailableModels() {
     }
   }
   
-  // You can call this once when the server starts
+  
 router.post('/analyze/:repoId', async (req, res) => {
     const { repoId } = req.params;
   
     try {
-      // 1. Fetch Project & User details
       const project = await Project.findOne({ repoId });
       
       if (!project) {
@@ -57,7 +56,6 @@ router.post('/analyze/:repoId', async (req, res) => {
       const Octokit = await getOctokit();
       const octokit = new Octokit({ auth: user.accessToken });
   
-      // 2. Gather Repository Context (File list and .gitignore)
       const { data: files } = await octokit.rest.repos.getContent({
         owner: project.owner,
         repo: project.name,
@@ -75,10 +73,20 @@ router.post('/analyze/:repoId', async (req, res) => {
         });
         gitignoreContent = Buffer.from(gi.content, 'base64').toString();
       }
+    const entryPoints = ['index.js', 'app.js', 'server.js', 'main.py', 'src/index.ts', 'server.ts','app/page.tsx','middleware.ts'];
+    const mainFile = fileList.find(name => entryPoints.includes(name));
+    let entryCodeSnippet = "No entry file found for code analysis.";
+
+    if (mainFile) {
+      const { data: content } = await octokit.rest.repos.getContent({
+        owner: project.owner, repo: project.name, path: mainFile
+      });
+      const decodedCode = Buffer.from(content.content, 'base64').toString();
+      entryCodeSnippet = decodedCode.split('\n').slice(0, 50).join('\n');
+    }
   listAvailableModels();
 
   
-      // 3. Prepare AI Prompt
       const model = genAI.getGenerativeModel({ 
         model: "gemini-2.5-flash",
       }, { apiVersion: 'v1' });
@@ -87,20 +95,29 @@ router.post('/analyze/:repoId', async (req, res) => {
         Repository Name: ${project.name}
         Files: ${fileList.join(', ')}
         .gitignore: ${gitignoreContent}
+        Entry Code (first 50 lines):
+      ${entryCodeSnippet}
   
         Tasks:
-        - Identify the primary programming language.
-        - Check for security issues (e.g., is .env in the file list but NOT in .gitignore?).
-        - Identify missing production files (Dockerfile, GitHub Actions).
-        - Suggest the best deployment platform (Vercel, AWS, Railway) and explain why.
-        - Calculate a production readiness score (0-100).
-        - Provide pseudocode for a Dockerfile and a GitHub Actions CI/CD pipeline.
+        1. Identify the primary programming language.
+        2. Check for security issues (e.g., is .env in the file list but NOT in .gitignore?).
+        3. Security Heatmap: Rate (0-10, where 10 is very safe) the following:
+         - 'secrets': Check for hardcoded keys/tokens in the snippet.
+         - 'cors': Check for "origin: *" or weak CORS.
+         - 'headers': Check for 'helmet' or security headers.
+        4. Cloud Architect: Predict monthly cost on Railway/AWS and suggest scaling tier.
+        5. Identify missing production files (Dockerfile, GitHub Actions).
+        6. Suggest the best deployment platform (Vercel, AWS, Railway) and explain why.
+        7. Calculate a production readiness score (0-100).
+        8. Provide pseudocode for a Dockerfile and a GitHub Actions CI/CD pipeline.
   
         RESPONSE FORMAT: Strict JSON only.
         {
           "language": "string",
           "productionScore": number,
           "securityAlerts": ["alert1", "alert2"],
+          "securityHeatmap": { "secrets": number, "cors": number, "headers": number },
+          "costAnalysis": { "estimatedMonthly": number, "tier": "string", "reason": "string" },
           "missingFiles": ["file1"],
           "deploymentTip": "string",
           "optimizationTips": "string",
@@ -109,7 +126,6 @@ router.post('/analyze/:repoId', async (req, res) => {
         }
       `;
   
-      // 4. Call Gemini AI
       const result = await model.generateContent(prompt);
       console.log('result is :',result);
       const responseText = result.response.text().replace(/```json|```/g, "");
@@ -117,7 +133,6 @@ router.post('/analyze/:repoId', async (req, res) => {
       const aiData = JSON.parse(responseText);
       console.log('aiData is :',aiData);
   
-      // 5. Update Project Score and Save/Update Report
       project.productionScore = aiData.productionScore;
       project.lastScan = new Date();
       await project.save();
@@ -126,12 +141,7 @@ router.post('/analyze/:repoId', async (req, res) => {
         { repoId: project.repoId },
         {
           userId: project.userId,
-          language: aiData.language,
-          productionScore: aiData.productionScore,
-          securityAlerts: aiData.securityAlerts,
-          missingFiles: aiData.missingFiles,
-          deploymentTip: aiData.deploymentTip,
-          optimizationTips: aiData.optimizationTips,
+          ...aiData,
           generatedFiles: {
             dockerfile: aiData.dockerfile,
             cicd: aiData.cicd
