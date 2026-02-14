@@ -13,6 +13,16 @@ const ReportSchema = new mongoose.Schema({
     dockerfile: String,
     cicd: String
   },
+  securityHeatmap: {
+    secrets: Number,
+    cors: Number,
+    headers: Number
+  },
+  costAnalysis: {
+    estimatedMonthly: Number,
+    tier: String,
+    reason: String
+  },
   createdAt: { type: Date, default: Date.now }
 });
 
