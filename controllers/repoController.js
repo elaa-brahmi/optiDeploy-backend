@@ -254,10 +254,243 @@ async function getProjects(req, res) {
         res.status(500).json({ error: "Failed to fetch projects" });
     }
 }
+async function generatePR(req, res) {
+    const { repoId } = req.params;
+  
+    try {
+      // 1. Fetch Project and Report Data
+      const project = await Project.findOne({ repoId });
+      const report = await Report.findOne({ repoId });
+  
+      if (!project || !report) {
+        return res.status(404).json({ error: "Analysis data not found. Please run a scan first." });
+      }
+
+      // 2. Initialize Octokit
+      const user = await User.findOne({ githubId: project.userId });
+      if (!user || !user.accessToken) {
+        return res.status(401).json({ error: "User authentication failed." });
+      }
+      
+      const Octokit = await getOctokit();
+      const octokit = new Octokit({ auth: user.accessToken });
+      const { owner, name: repo } = project;
+
+      console.log(`Creating PR for ${owner}/${repo}`);
+  
+      // 3. Get repo info
+      const { data: repoData } = await octokit.rest.repos.get({ owner, repo });
+      console.log('✓ Repo accessible:', repoData.full_name);
+      
+      if (!repoData.permissions.push) {
+        return res.status(403).json({ 
+          error: "You don't have write access to this repository" 
+        });
+      }
+
+      const defaultBranch = repoData.default_branch;
+      console.log(`Default branch: ${defaultBranch}`);
+      
+      // 4. Create a unique branch name
+      const newBranchName = `optideploy-setup-${Date.now()}`;
+      
+      // 5. Get the default branch SHA
+      const { data: ref } = await octokit.rest.git.getRef({
+        owner,
+        repo,
+        ref: `heads/${defaultBranch}`
+      });
+      
+      const baseSha = ref.object.sha;
+      console.log(`Base SHA: ${baseSha}`);
+      
+      // 6. Create new branch from default branch
+      await octokit.rest.git.createRef({
+        owner,
+        repo,
+        ref: `refs/heads/${newBranchName}`,
+        sha: baseSha
+      });
+      console.log(`✓ Branch created: ${newBranchName}`);
+
+      // Wait for branch to initialize
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      // Helper function to get file SHA if it exists
+      const getFileSha = async (path) => {
+        try {
+          const { data } = await octokit.rest.repos.getContent({
+            owner,
+            repo,
+            path,
+            ref: newBranchName
+          });
+          return Array.isArray(data) ? null : data.sha;
+        } catch (err) {
+          if (err.status === 404) {
+            return null;
+          }
+          throw err;
+        }
+      };
+
+      // 7. Create or update Dockerfile
+      const dockerfileSha = await getFileSha('Dockerfile');
+      const dockerfileParams = {
+        owner,
+        repo,
+        path: 'Dockerfile',
+        message: dockerfileSha ? '🐳 Update Dockerfile' : '🐳 Add optimized Dockerfile',
+        content: Buffer.from(report.generatedFiles.dockerfile).toString('base64'),
+        branch: newBranchName
+      };
+      
+      if (dockerfileSha) {
+        dockerfileParams.sha = dockerfileSha;
+        console.log('Dockerfile exists, will update it');
+      }
+      
+      await octokit.rest.repos.createOrUpdateFileContents(dockerfileParams);
+      console.log('✓ Dockerfile created/updated');
+
+      // 8. Debug: Check what's actually in .github/workflows on the new branch
+      try {
+        const { data: workflowsContent } = await octokit.rest.repos.getContent({
+          owner,
+          repo,
+          path: '.github/workflows',
+          ref: newBranchName
+        });
+        console.log('Contents of .github/workflows:', Array.isArray(workflowsContent) 
+          ? workflowsContent.map(f => f.name) 
+          : 'Not a directory');
+      } catch (err) {
+        console.log('.github/workflows check error:', err.status, err.message);
+      }
+
+      // 9. First, create a dummy file in workflows to ensure the directory is writable
+      console.log('Creating dummy file to initialize directory...');
+      try {
+        await octokit.rest.repos.createOrUpdateFileContents({
+          owner,
+          repo,
+          path: '.github/workflows/.optideploy-temp',
+          message: 'temp: initialize directory',
+          content: Buffer.from('temp').toString('base64'),
+          branch: newBranchName
+        });
+        console.log('✓ Dummy file created');
+        
+        // Wait a bit
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      } catch (tempErr) {
+        console.log('Dummy file creation error:', tempErr.status, tempErr.message);
+        // Continue anyway
+      }
+
+      // 10. Now try to create the workflow file
+      const workflowSha = await getFileSha('.github/workflows/optideploy-ci.yml');
+      const workflowParams = {
+        owner,
+        repo,
+        path: '.github/workflows/optideploy-ci.yml',
+        message: workflowSha ? '🚀 Update CI/CD pipeline' : '🚀 Add CI/CD pipeline',
+        content: Buffer.from(report.generatedFiles.cicd).toString('base64'),
+        branch: newBranchName
+      };
+      
+      if (workflowSha) {
+        workflowParams.sha = workflowSha;
+        console.log('Workflow file exists, will update it');
+      }
+      
+      console.log('Creating/updating CI/CD workflow file...');
+      await octokit.rest.repos.createOrUpdateFileContents(workflowParams);
+      console.log('✓ CI/CD workflow created/updated');
+
+      // 11. Delete the dummy file
+      try {
+        const dummySha = await getFileSha('.github/workflows/.optideploy-temp');
+        if (dummySha) {
+          await octokit.rest.repos.deleteFile({
+            owner,
+            repo,
+            path: '.github/workflows/.optideploy-temp',
+            message: 'temp: cleanup',
+            sha: dummySha,
+            branch: newBranchName
+          });
+          console.log('✓ Dummy file deleted');
+        }
+      } catch (cleanupErr) {
+        console.log('Cleanup error (non-fatal):', cleanupErr.message);
+      }
+  
+      // 12. Open the Pull Request
+      const { data: pr } = await octokit.rest.pulls.create({
+        owner, 
+        repo,
+        title: '🚀 OptiDeploy: Production Readiness Setup',
+        head: newBranchName,
+        base: defaultBranch,
+        body: `### 🚀 Automated DevOps Setup
+
+I noticed your repository was missing a few production-ready files. Based on my analysis, I've generated the following:
+
+1. **Dockerfile**: Optimized for your ${report.language} stack.
+2. **GitHub Actions**: Automated build and cache-optimized pipeline.
+
+Review the changes and merge to improve your Production Score!
+
+---
+*Generated by [OptiDeploy](https://optideploy.com)*`
+      });
+      
+      console.log(`✓ PR created: ${pr.html_url}`);
+  
+      res.json({ 
+        success: true, 
+        prUrl: pr.html_url,
+        prNumber: pr.number,
+        message: "Pull Request created successfully!" 
+      });
+  
+    } catch (err) {
+      console.error("PR Generation Error:", err.message);
+      console.error("Status:", err.status);
+      
+      if (err.status === 404) {
+        return res.status(404).json({ 
+          error: "Repository or resource not found.",
+          details: err.message
+        });
+      }
+      
+      if (err.status === 403) {
+        return res.status(403).json({ 
+          error: "Permission denied.",
+          details: err.message 
+        });
+      }
+      
+      if (err.status === 422) {
+        return res.status(422).json({ 
+          error: "Validation failed.",
+          details: err.message 
+        });
+      }
+      
+      res.status(500).json({ 
+        error: err.message || "Failed to create Pull Request",
+        status: err.status 
+      });
+    }
+}
 
 module.exports = {
     analyzeRepo,
     searchRepos,
     importRepo,
-    getProjects
+    getProjects,
+    generatePR
 };

@@ -8,5 +8,6 @@ router.get('/search', repoController.searchRepos);
 router.post('/import', repoController.importRepo);
 router.get('/projects/:githubId', repoController.getProjects);
 router.get('/report/:repoId', reportController.getReport);
+router.post('/PR/:repoId',repoController.generatePR)
 
 module.exports = router;
