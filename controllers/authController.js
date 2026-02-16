@@ -8,7 +8,7 @@ exports.syncUser = async (req, res) => {
       { email, name, accessToken, lastLogin: new Date() },
       { upsert: true }
     );
-    return res.status(200).send("Synced"); // Ensure a response is sent!
+    return res.status(200).send("Synced"); 
   } catch (err) {
     return res.status(500).send(err.message);
   }

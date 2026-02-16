@@ -21,4 +21,4 @@ app.get('/health', (req, res) => {
 app.use('/api/auth', authRouter);
 app.use('/api/repos', repoRouter);
 const PORT = process.env.PORT;
-app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+app.listen(PORT, () => console.log(` Server running on port ${PORT}`));

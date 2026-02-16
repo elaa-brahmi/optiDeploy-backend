@@ -9,7 +9,7 @@ const ProjectSchema = new mongoose.Schema({
   language: String,
   stars: { type: Number, default: 0 },
   htmlUrl: String,
-  productionScore: { type: Number, default: 0 }, // We will calculate this later
+  productionScore: { type: Number, default: 0 }, 
   lastScan: { type: Date, default: Date.now },
   addedAt: { type: Date, default: Date.now }
 });
