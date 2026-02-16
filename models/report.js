@@ -23,6 +23,14 @@ const ReportSchema = new mongoose.Schema({
     tier: String,
     reason: String
   },
+  resourceOptimizer:{
+    explanation:String,
+    memoryRequest:String,
+    cpuRequest:String,
+    memoryLimit:String,
+    cpuLimit:String
+
+  },
   createdAt: { type: Date, default: Date.now }
 });
 
