@@ -495,11 +495,92 @@ Review the changes and merge to improve your Production Score!
         });
     }
 }
+async function generateIaC(req, res) {
+    const { repoId } = req.params;
+    const { provider } = req.body; // 'aws', 'azure', or 'gcp'
 
+    try {
+        const project = await Project.findOne({ repoId });
+        const report = await Report.findOne({ repoId });
+        const user = await User.findOne({ githubId: project.userId });
+
+        if (!project || !report) {
+            return res.status(404).json({ error: "Analysis not found." });
+        }
+
+        const Octokit = await getOctokit();
+        const octokit = new Octokit({ auth: user.accessToken });
+
+        // 1. Fetch package.json or equivalent for dependency context
+        let manifestContent = "";
+        try {
+            const { data: pkg } = await octokit.rest.repos.getContent({
+                owner: project.owner, repo: project.name, path: 'package.json' 
+            });
+            manifestContent = Buffer.from(pkg.content, 'base64').toString();
+        } catch (e) {
+            manifestContent = "No manifest found.";
+        }
+
+        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+
+        const prompt = `
+        You are a Staff Cloud Architect and DevSecOps Specialist. 
+        Generate a high-performance, secure, and production-ready Terraform 'main.tf' for ${provider.toUpperCase()}.
+
+        PROJECT CONTEXT:
+        - Language: ${report.language}
+        - Dockerfile: ${report.generatedFiles.dockerfile}
+        - Dependencies: ${manifestContent}
+        - Detected Vulnerabilities to avoid: ${report.securityAlerts.join(', ')}
+
+        MANDATORY ARCHITECTURE CONSTRAINTS:
+        1. IDENTITY & ACCESS: Use System-Assigned Managed Identity. NO hardcoded service principal keys.
+        2. SECRET MANAGEMENT: All sensitive strings (DB strings, API keys) MUST be stored in a Key Vault (Azure), Secret Manager (AWS/GCP), or Parameter Store. Reference these secrets by ID in the container service.
+        3. NETWORKING: 
+           - Provision a VPC/VNet with at least 2 subnets.
+           - Place Databases/Caches in a Private Subnet.
+           - Use Private Endpoints/Link for DB-to-App communication.
+        4. RESOURCE NAMING: Use the 'random' provider (random_string) to prevent naming collisions for global resources like Storage or Container Registries.
+        5. CONTAINER CONFIG:
+           - Configure health checks (liveness/readiness) based on the Dockerfile EXPOSE port.
+           - Set CPU/Memory limits to: CPU ${report.resourceOptimizer?.cpuLimit || '0.5'}, RAM ${report.resourceOptimizer?.memoryLimit || '1Gi'}.
+        6. DATABASE:
+           - If dependencies contain 'mongoose' or 'mongodb', provision a Serverless/Autoscale CosmosDB (Azure) or DocumentDB (AWS).
+           - If 'pg' or 'sequelize', provision a Managed SQL instance.
+
+        TASKS:
+        1. Generate complete HCL code with variables and outputs.
+        2. Include the 'random' provider to ensure unique resource names.
+        3. Use locals to manage tags and naming conventions cleanly.
+
+        OUTPUT FORMAT: Return JSON only. No prose outside the JSON.
+        {
+          "terraformCode": "string (HCL)",
+          "explanation": "Summarize the security (Key Vault, Private Links) and cost choices.",
+          "deploymentSteps": ["step 1: terraform init", "step 2...", "Note: Ensure you have contributor access to the subscription."],
+          "cloudResources": ["Azure Container Apps", "Key Vault", "CosmosDB", "VNet"]
+        }
+        `;
+
+        const result = await model.generateContent(prompt);
+        const iacData = JSON.parse(result.response.text().replace(/```json|```/g, ""));
+
+        // Save to specific provider slot
+        const update = {};
+        update[`iacConfigurations.${provider}`] = iacData;
+        await Report.findOneAndUpdate({ repoId }, { $set: update });
+
+        res.json({ success: true, iac: iacData });
+    } catch (err) {
+        res.status(500).json({ error: "IaC Generation failed" });
+    }
+}
 module.exports = {
     analyzeRepo,
     searchRepos,
     importRepo,
     getProjects,
-    generatePR
+    generatePR,
+    generateIaC
 };
