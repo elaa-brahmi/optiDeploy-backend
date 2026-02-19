@@ -1,25 +1,13 @@
-const nodemailer = require('nodemailer');
 const Feedback = require('../models/feedback');
 const User = require('../models/user')
-const transporter = nodemailer.createTransport({
-    host: 'smtp.gmail.com',
-    port: 587,         
-    secure: false,    
-    auth: {
-      user: process.env.MY_EMAIL,
-      pass: process.env.EMAIL_APP_PASSWORD,
-    },
-    tls: {
-      family: 4,      
-      rejectUnauthorized: false 
-    }
-  });
+const { Resend } = require('resend');
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 async function sendFeedback(req, res) {
     try {
       const { githubId } = req.params;
       const { message } = req.body;
-      
+  
       const user = await User.findOne({ githubId: String(githubId) });
       if (!user) return res.status(404).json({ success: false, error: "User not found" });
   
@@ -32,20 +20,18 @@ async function sendFeedback(req, res) {
   
       res.status(201).json({ success: true, message: 'Feedback shared!' });
   
-      const mailOptions = {
-        from: `"optiDeploy Copilot" <${process.env.MY_EMAIL}>`,
-        to: process.env.EMAIL, 
+      resend.emails.send({
+        from: 'optiDeploy Copilot <onboarding@resend.dev>',
+        to: process.env.EMAIL,
         subject: '🚀 New Feedback Received for optiDeploy!',
         html: `
           <h3>New Feedback from ${user.email}</h3>
           <p><strong>Message:</strong> ${message}</p>
           <p><em>User ID: ${githubId}</em></p>
         `,
-      };
-  
-      transporter.sendMail(mailOptions)
-        .then(() => console.log("✅ Feedback email sent successfully"))
-        .catch((err) => console.error("❌ Background Email Error:", err));
+      })
+        .then(() => console.log("Feedback email sent successfully"))
+        .catch((err) => console.error(" Background Email Error:", err));
   
     } catch (error) {
       if (!res.headersSent) {
@@ -54,7 +40,6 @@ async function sendFeedback(req, res) {
       console.error("General Feedback Error:", error);
     }
   }
-
 async function getUserFeedback(req, res) {
   try {
     const { githubId } = req.params;
