@@ -124,7 +124,7 @@ async function analyzeRepo(req, res) {
          - 'headers': Check for 'helmet' or security headers.
         4. Cloud Architect: Predict monthly cost on Railway/AWS and suggest scaling tier.
         5. Identify missing production files (Dockerfile, GitHub Actions).
-        6. Suggest the best deployment platform (Vercel, AWS, Railway) and explain why.
+        6. Suggest the best deployment platform (Vercel, AWS, Railway, Azure) and explain why.
         7. Calculate a production readiness score (0-100).
         8. Provide pseudocode for a Dockerfile and a GitHub Actions CI/CD pipeline.
         9. Cloud Cost Optimizer: Based on the Dockerfile you generated, suggest specific CPU and Memory resource limits and requests for a production container (e.g., 512Mi RAM, 0.5 vCPU).

@@ -4,6 +4,7 @@ const express = require('express');
 const connectDB = require('./config/db');
 const authRouter = require('./routers/authRouter');
 const repoRouter = require('./routers/repoRouter');
+const feedbackRouter = require('./routers/feedback');
 const app = express();
 const cors = require('cors');
 //  INITIALIZE METRICS
@@ -42,5 +43,6 @@ app.get('/health', (req, res) => {
 
 app.use('/api/auth', authRouter);
 app.use('/api/repos', repoRouter);
+app.use('/api/feedback',feedbackRouter);
 const PORT = process.env.PORT;
 app.listen(PORT, () => console.log(` Server running on port ${PORT}`));
