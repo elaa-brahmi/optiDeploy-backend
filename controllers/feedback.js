@@ -2,11 +2,16 @@ const nodemailer = require('nodemailer');
 const Feedback = require('../models/feedback');
 const User = require('../models/user')
 const transporter = nodemailer.createTransport({
-  service: 'gmail',
+    host: 'smtp.gmail.com',
+  port: 465,
+  secure: true,
   auth: {
     user: process.env.MY_EMAIL,
     pass: process.env.EMAIL_APP_PASSWORD, 
   },
+  tls: {
+    family: 4 
+  }
 });
 
 async function sendFeedback(req,res){
