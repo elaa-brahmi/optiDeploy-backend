@@ -3,16 +3,17 @@ const Feedback = require('../models/feedback');
 const User = require('../models/user')
 const transporter = nodemailer.createTransport({
     host: 'smtp.gmail.com',
-  port: 465,
-  secure: true,
-  auth: {
-    user: process.env.MY_EMAIL,
-    pass: process.env.EMAIL_APP_PASSWORD, 
-  },
-  tls: {
-    family: 4 
-  }
-});
+    port: 587,         
+    secure: false,    
+    auth: {
+      user: process.env.MY_EMAIL,
+      pass: process.env.EMAIL_APP_PASSWORD,
+    },
+    tls: {
+      family: 4,      
+      rejectUnauthorized: false 
+    }
+  });
 
 async function sendFeedback(req, res) {
     try {
